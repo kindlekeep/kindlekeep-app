@@ -1,0 +1,27 @@
+@import "tailwindcss";
+
+@theme {
+  /* Design System: Zinc & Spark */
+  --color-zinc-950: #09090B;
+  --color-zinc-900: #18181B;
+  --color-zinc-800: #27272A;
+  --color-zinc-200: #E4E4E7;
+  --color-zinc-50: #FAFAFA;
+
+  --color-blue-500: #3B82F6;
+  --color-blue-600: #2563EB;
+
+  --color-iris-400: #A78BFA;
+  --color-iris-600: #7C3AED;
+
+  /* Typography Stack (assuming you import these fonts in index.html later) */
+  --font-unbounded: "Unbounded", sans-serif;
+  --font-onest: "Onest", sans-serif;
+}
+
+/* Base layer for Radix / Tailwind harmony */
+@layer base {
+  body {
+    @apply bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50 m-0 min-h-screen antialiased;
+  }
+}
