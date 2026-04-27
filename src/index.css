@@ -1,27 +1,26 @@
+/* src/index.css */
+@import url('https://fonts.googleapis.com/css2?family=Onest:wght@100..900&family=Righteous&family=Unbounded:wght@200..900&display=swap');
 @import "tailwindcss";
 
 @theme {
-  /* Design System: Zinc & Spark */
-  --color-zinc-950: #09090B;
-  --color-zinc-900: #18181B;
+  --font-sans: "Onest", sans-serif;
+  --font-heading: "Unbounded", sans-serif;
+  --font-wordmark: "Righteous", system-ui;
+
   --color-zinc-800: #27272A;
-  --color-zinc-200: #E4E4E7;
-  --color-zinc-50: #FAFAFA;
-
+  --color-zinc-900: #18181B;
+  --color-zinc-950: #09090B;
   --color-blue-500: #3B82F6;
-  --color-blue-600: #2563EB;
-
   --color-iris-400: #A78BFA;
-  --color-iris-600: #7C3AED;
 
-  /* Typography Stack (assuming you import these fonts in index.html later) */
-  --font-unbounded: "Unbounded", sans-serif;
-  --font-onest: "Onest", sans-serif;
+  --animate-kindle-breathe: kindle-breathe 3s ease-in-out infinite;
+
+  @keyframes kindle-breathe {
+    0%, 100% { box-shadow: 0 0 2px 0px rgba(59, 130, 246, 0.2); }
+    50% { box-shadow: 0 0 6px 2px rgba(59, 130, 246, 0.6); }
+  }
 }
 
-/* Base layer for Radix / Tailwind harmony */
-@layer base {
-  body {
-    @apply bg-zinc-50 text-zinc-950 dark:bg-zinc-950 dark:text-zinc-50 m-0 min-h-screen antialiased;
-  }
+body {
+  @apply bg-zinc-950 text-zinc-100 font-sans;
 }
