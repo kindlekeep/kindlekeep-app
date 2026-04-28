@@ -1,5 +1,5 @@
-// src/features/monitors/store/useMonitorStore.ts
 import { create } from 'zustand';
+import { api } from '../../../lib/axios';
 
 export enum UptimeStatus {
   Healthy = 0,
@@ -17,26 +17,46 @@ export interface MonitorResponse {
   latencyMs?: number;
 }
 
-export interface PulseUpdate {
-  monitorId: string;
-  newStatus: UptimeStatus;
-  latencyMs: number;
-}
-
-export interface MonitorState {
+interface MonitorStore {
   monitors: MonitorResponse[];
   setMonitors: (monitors: MonitorResponse[]) => void;
-  updatePulse: (update: PulseUpdate) => void;
+  toggleMonitor: (id: string) => Promise<void>;
+  deleteMonitor: (id: string) => Promise<void>;
 }
 
-export const useMonitorStore = create<MonitorState>((set) => ({
+export const useMonitorStore = create<MonitorStore>((set, get) => ({
   monitors: [],
   setMonitors: (monitors) => set({ monitors }),
-  updatePulse: (update) => set((state) => ({
-    monitors: state.monitors.map((m) =>
-      m.id === update.monitorId
-        ? { ...m, currentUptimeStatus: update.newStatus, latencyMs: update.latencyMs }
-        : m
-    )
-  }))
+  
+  toggleMonitor: async (id: string) => {
+    const previousMonitors = get().monitors;
+    
+    set({
+      monitors: previousMonitors.map((m) => 
+        m.id === id ? { ...m, isActive: !m.isActive } : m
+      )
+    });
+
+    try {
+      await api.patch(`/api/monitors/${id}/toggle`);
+    } catch (error) {
+      set({ monitors: previousMonitors });
+      console.error('Failed to toggle monitor state', error);
+    }
+  },
+
+  deleteMonitor: async (id: string) => {
+    const previousMonitors = get().monitors;
+    
+    set({
+      monitors: previousMonitors.filter((m) => m.id !== id)
+    });
+
+    try {
+      await api.delete(`/api/monitors/${id}`);
+    } catch (error) {
+      set({ monitors: previousMonitors });
+      console.error('Failed to delete monitor', error);
+    }
+  }
 }));

@@ -1,43 +1,51 @@
-// src/features/monitors/hooks/useSignalR.ts
 import { useEffect, useRef } from 'react';
-import * as signalR from '@microsoft/signalr';
-import { useMonitorStore, type PulseUpdate } from '../store/useMonitorStore';
+import { HubConnectionBuilder, HubConnection, LogLevel } from '@microsoft/signalr';
+import { useMonitorStore } from '../store/useMonitorStore';
 
-export const useSignalR = () => {
-  const updatePulse = useMonitorStore((state) => state.updatePulse);
-  const connectionRef = useRef<signalR.HubConnection | null>(null);
-
+export const useSignalR = (token: string | null) => {
+  const connectionRef = useRef<HubConnection | null>(null);
+  
   useEffect(() => {
-    const token = localStorage.getItem('jwt_token');
     if (!token) return;
 
-    const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5247';
+    const apiUrl = import.meta.env.VITE_API_URL || 'http://localhost:5247';
 
-    const connection = new signalR.HubConnectionBuilder()
-      .withUrl(`${baseUrl}/hubs/pulse`, {
+    const connection = new HubConnectionBuilder()
+      .withUrl(`${apiUrl}/hubs/pulse`, {
         accessTokenFactory: () => token,
       })
+      .configureLogging(LogLevel.Warning)
       .withAutomaticReconnect()
-      .configureLogging(signalR.LogLevel.Warning)
       .build();
 
     connectionRef.current = connection;
 
-    // Complex logic: Start the connection asynchronously and bind the event listener strictly
-    // after the connection state transitions to connected to mitigate event race conditions.
-    connection.start()
-      .then(() => {
-        connection.on('ReceivePulse', (update: PulseUpdate) => {
-          updatePulse(update);
-        });
-      })
-      .catch((err) => console.error(err));
+    connection.on('ReceivePulse', (update) => {
+      useMonitorStore.setState((state) => ({
+        monitors: state.monitors.map((m) =>
+          m.id === update.monitorId
+            ? { ...m, currentUptimeStatus: update.newStatus, latencyMs: update.latencyMs }
+            : m
+        ),
+      }));
+    });
+
+    const startConnection = async () => {
+      try {
+        await connection.start();
+      } catch (error: any) {
+        // Complex logic: React Strict Mode mounts components twice in development, which can abort the initial SignalR negotiation.
+        if (error.name === 'AbortError' || error.message?.includes('stopped during negotiation')) {
+          return; 
+        }
+        console.warn('SignalR connection failed:', error);
+      }
+    };
+
+    startConnection();
 
     return () => {
-      connection.off('ReceivePulse');
       connection.stop();
     };
-  }, [updatePulse]);
-
-  return connectionRef.current;
+  }, [token]);
 };

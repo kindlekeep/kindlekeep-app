@@ -1,30 +1,46 @@
-import { Flex, Text, Button, Card } from "@radix-ui/themes";
-import { Activity } from "lucide-react";
+import { BrowserRouter as Router, Routes, Route, Link } from 'react-router-dom';
+import { Flex, Text, Box } from '@radix-ui/themes';
+import { Settings as SettingsIcon } from 'lucide-react';
+import { Dashboard } from './pages/Dashboard';
+import { Settings } from './pages/Settings';
+import { MonitorDetail } from './pages/MonitorDetail';
+import { AuthCallback } from './features/auth/components/AuthCallback';
+import { LoginView } from './features/auth/components/LoginView';
 
-export default function App() {
+const Layout = ({ children }: { children: React.ReactNode }) => (
+  <Box className="min-h-screen bg-zinc-950 font-satoshi">
+    <header className="border-b border-zinc-800 bg-zinc-900/50 backdrop-blur-md sticky top-0 z-50">
+      <Flex align="center" justify="between" className="max-w-7xl mx-auto px-6 h-16">
+        <Link to="/">
+          <Text className="font-black text-xl text-zinc-50 tracking-tight font-satoshi">
+            kindlekeep
+          </Text>
+        </Link>
+        <nav>
+          <Link to="/settings" className="text-zinc-400 hover:text-zinc-50 transition-colors flex items-center gap-2">
+            <SettingsIcon size={18} />
+            <span className="text-sm font-medium font-satoshi">Settings</span>
+          </Link>
+        </nav>
+      </Flex>
+    </header>
+    <main>
+      {children}
+    </main>
+  </Box>
+);
+
+export const App = () => {
   return (
-    <Flex direction="column" align="center" justify="center" className="min-h-screen p-8">
-      <Card size="4" className="w-full max-w-md">
-        <Flex direction="column" gap="4" align="center">
-          
-          <Flex align="center" justify="center" className="w-12 h-12 bg-blue-500/10 rounded-full">
-            <Activity className="text-blue-500 w-6 h-6" />
-          </Flex>
-
-          <Text size="6" weight="bold" className="font-unbounded">
-            KindleKeep
-          </Text>
-          
-          <Text size="3" color="gray" className="text-center font-onest">
-            Continuous Availability & Security Sentinel. Always On. Always Secure.
-          </Text>
-
-          <Button size="3" variant="solid" className="w-full mt-4 cursor-pointer">
-            Initialize Engine
-          </Button>
-
-        </Flex>
-      </Card>
-    </Flex>
+    <Router>
+      <Routes>
+        <Route path="/" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/dashboard" element={<Layout><Dashboard /></Layout>} />
+        <Route path="/dashboard/monitor/:id" element={<Layout><MonitorDetail /></Layout>} />
+        <Route path="/settings" element={<Layout><Settings /></Layout>} />
+        <Route path="/login" element={<LoginView />} />
+        <Route path="/auth/callback/:provider" element={<AuthCallback />} />
+      </Routes>
+    </Router>
   );
-}
+};
