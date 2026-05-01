@@ -1,15 +1,21 @@
-// src/pages/MonitorDetail.tsx
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Box, Flex, Text, Code, Button, Tooltip } from '@radix-ui/themes';
-import { ArrowLeft, ShieldCheck, ShieldAlert, Copy, Activity } from 'lucide-react';
-import { useMemo } from 'react';
+import { ArrowLeft, ShieldCheck, ShieldAlert, Copy, Activity, TerminalSquare } from 'lucide-react';
+import { useEffect, useMemo, useRef, useState } from 'react';
+import { Terminal } from '@xterm/xterm';
+import { FitAddon } from '@xterm/addon-fit';
+import * as signalR from '@microsoft/signalr';
 import { api } from '../lib/axios';
 import { UptimeStatus } from '../features/monitors/store/useMonitorStore';
 import type { SecurityAuditResponse, UptimeLogResponse } from '../features/monitors/types/monitor.types';
+import '@xterm/xterm/css/xterm.css';
 
 export const MonitorDetail = () => {
   const { id } = useParams<{ id: string }>();
+  const terminalRef = useRef<HTMLDivElement>(null);
+  const xtermInstance = useRef<Terminal | null>(null);
+  const [connection, setConnection] = useState<signalR.HubConnection | null>(null);
 
   const { data: history, isLoading: historyLoading } = useQuery<UptimeLogResponse[]>({
     queryKey: ['monitorHistory', id],
@@ -30,6 +36,80 @@ export const MonitorDetail = () => {
     enabled: !!id,
   });
 
+  useEffect(() => {
+    if (!terminalRef.current) return;
+
+    const fitAddon = new FitAddon();
+    const term = new Terminal({
+      theme: {
+        background: '#09090b',
+        foreground: '#fafafa',
+        cursor: '#3b82f6',
+        selectionBackground: '#27272a',
+      },
+      fontFamily: 'monospace',
+      fontSize: 14,
+      cursorBlink: true,
+      disableStdin: true,
+    });
+
+    term.loadAddon(fitAddon);
+    term.open(terminalRef.current);
+    fitAddon.fit();
+    xtermInstance.current = term;
+
+    const resizeObserver = new ResizeObserver(() => fitAddon.fit());
+    resizeObserver.observe(terminalRef.current);
+
+    term.writeln('\x1b[1;34m>\x1b[0m Initializing Live Telemetry Terminal...');
+    term.writeln('\x1b[1;34m>\x1b[0m Establishing secure transport layer...');
+
+    return () => {
+      resizeObserver.disconnect();
+      term.dispose();
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!id) return;
+
+    const url = import.meta.env.VITE_API_URL || 'http://localhost:5247';
+    const newConnection = new signalR.HubConnectionBuilder()
+      .withUrl(`${url}/hubs/pulse`)
+      .withAutomaticReconnect()
+      .build();
+
+    setConnection(newConnection);
+
+    return () => {
+      newConnection.stop();
+    };
+  }, [id]);
+
+  useEffect(() => {
+    if (!connection || !id) return;
+
+    connection.start()
+      .then(() => {
+        connection.invoke('SubscribeToMonitor', id);
+        connection.on('ReceiveLogStream', (log: string) => {
+          if (xtermInstance.current) {
+            xtermInstance.current.writeln(`\x1b[90m[${new Date().toISOString()}]\x1b[0m ${log}`);
+          }
+        });
+      })
+      .catch(err => {
+        if (xtermInstance.current) {
+          xtermInstance.current.writeln(`\x1b[1;31m>\x1b[0m Transport failed: ${err}`);
+        }
+      });
+
+    return () => {
+      connection.invoke('UnsubscribeFromMonitor', id)
+        .then(() => connection.off('ReceiveLogStream'));
+    };
+  }, [connection, id]);
+
   const paddedHistory = useMemo(() => {
     if (!history) return Array(144).fill(null);
     const padding = Array(Math.max(0, 144 - history.length)).fill(null);
@@ -38,11 +118,10 @@ export const MonitorDetail = () => {
 
   const latestLog = history && history.length > 0 ? history[history.length - 1] : null;
 
-  // DTA Visualization Logic
   const dtaMetrics = useMemo(() => {
     if (!latestLog) return null;
     const total = latestLog.latencyMs;
-    const handshake = Math.min(100, total * 0.3); // Static mock base, capped to prevent overflow on very fast responses
+    const handshake = Math.min(100, total * 0.3);
     const isColdStart = total > 800;
     const initLag = isColdStart ? total - handshake - (total * 0.2) : Math.min(50, total * 0.2);
     const transit = Math.max(0, total - handshake - initLag);
@@ -92,7 +171,7 @@ export const MonitorDetail = () => {
   };
 
   return (
-    <Box className="max-w-7xl mx-auto py-10 px-6 font-satoshi">
+    <Box className="max-w-7xl mx-auto py-10 px-6 font-onest">
       <Link to="/dashboard" className="inline-flex items-center gap-2 text-zinc-400 hover:text-zinc-50 transition-colors mb-8">
         <ArrowLeft size={16} />
         <span>Return to Command Center</span>
@@ -171,6 +250,16 @@ export const MonitorDetail = () => {
           </Flex>
         </Box>
       )}
+
+      <Box className="bg-zinc-950 border border-zinc-800 p-8 mb-8" style={{ borderRadius: 0 }}>
+        <Flex align="center" gap="3" className="mb-6">
+          <TerminalSquare className="w-5 h-5 text-blue-500 drop-shadow-[0_0_2px_rgba(59,130,246,0.8)]" strokeWidth={1} />
+          <Text className="text-2xl font-bold font-unbounded text-zinc-50">
+            Live Telemetry Terminal
+          </Text>
+        </Flex>
+        <Box className="h-64 w-full rounded-sm overflow-hidden border border-zinc-800" ref={terminalRef} />
+      </Box>
 
       <Box className="bg-zinc-950 border border-zinc-800 p-8" style={{ borderRadius: 0 }}>
         <Text className="font-unbounded font-bold text-2xl text-zinc-50 block mb-6">Sentinel Vault Integration</Text>
