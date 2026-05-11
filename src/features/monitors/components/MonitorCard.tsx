@@ -1,6 +1,6 @@
 import { useState } from "react";
-import { Activity, Shield, Globe, Power, Trash2 } from "lucide-react";
-import { AlertDialog, Button, Flex } from "@radix-ui/themes";
+import { Activity, Shield, Globe, Power, Trash2, RotateCcw } from "lucide-react";
+import { AlertDialog, Button, Flex, Text } from "@radix-ui/themes";
 import {
   type MonitorResponse,
   UptimeStatus,
@@ -15,7 +15,10 @@ interface MonitorCardProps {
 
 export const MonitorCard = ({ monitor }: MonitorCardProps) => {
   const [isModalOpen, setIsModalOpen] = useState(false);
-  const { toggleMonitor, deleteMonitor } = useMonitorStore();
+  const [isResetting, setIsResetting] = useState(false);
+  const { toggleMonitor, deleteMonitor, resetCircuit } = useMonitorStore();
+
+  const isQuarantined = monitor.currentUptimeStatus === UptimeStatus.Quarantined;
 
   const handleToggle = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -26,6 +29,19 @@ export const MonitorCard = ({ monitor }: MonitorCardProps) => {
     e.stopPropagation();
   };
 
+  const handleReset = async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    setIsResetting(true);
+    try {
+      await resetCircuit(monitor.id);
+      alert(`Circuit reset successful for ${monitor.friendlyName}`);
+    } catch (error) {
+      alert(`Failed to reset circuit for ${monitor.friendlyName}`);
+    } finally {
+      setIsResetting(false);
+    }
+  };
+
   const confirmDelete = () => {
     deleteMonitor(monitor.id);
   };
@@ -33,25 +49,32 @@ export const MonitorCard = ({ monitor }: MonitorCardProps) => {
   return (
     <>
       <div
-        onClick={() => setIsModalOpen(true)}
-        className={`cursor-pointer h-full transition-opacity hover:opacity-90 ${!monitor.isActive ? "opacity-40" : ""}`}
+        onClick={() => !isQuarantined && setIsModalOpen(true)}
+        className={`cursor-pointer h-full transition-all duration-300 ${
+          !monitor.isActive || isQuarantined ? "opacity-40" : ""
+        } ${isQuarantined ? "grayscale" : ""}`}
         style={!monitor.isActive ? { fontFamily: "Geist Mono, monospace" } : {}}
       >
-        <KindleCard isActive={monitor.isActive}>
+        <KindleCard 
+          isActive={monitor.isActive && !isQuarantined}
+          className={isQuarantined ? "border-zinc-700 !animate-none" : ""}
+        >
           <div className="flex items-start justify-between mb-4">
             <div className="flex items-center gap-2">
               <Globe
                 strokeWidth={1}
-                className={`w-5 h-5 ${monitor.isActive ? "text-blue-500" : "text-zinc-500"}`}
+                className={`w-5 h-5 ${monitor.isActive && !isQuarantined ? "text-blue-500" : "text-zinc-500"}`}
               />
               <h3 className="font-heading font-bold text-sm truncate w-48 text-zinc-100">
                 {monitor.friendlyName}
               </h3>
             </div>
-            <span className="text-[10px] uppercase tracking-widest font-bold text-zinc-500 font-sans">
-              {monitor.isActive
-                ? UptimeStatus[monitor.currentUptimeStatus]
-                : "Hibernating"}
+            <span className={`text-[10px] uppercase tracking-widest font-bold font-sans ${isQuarantined ? "text-red-500 font-unbounded" : "text-zinc-500"}`}>
+              {isQuarantined 
+                ? "QUARANTINED" 
+                : monitor.isActive
+                  ? UptimeStatus[monitor.currentUptimeStatus]
+                  : "Hibernating"}
             </span>
           </div>
 
@@ -64,7 +87,7 @@ export const MonitorCard = ({ monitor }: MonitorCardProps) => {
               <div className="flex items-center gap-2">
                 <Activity strokeWidth={1} className="w-4 h-4 text-iris-400" />
                 <span className="text-sm font-mono">
-                  {monitor.latencyMs != null && monitor.isActive
+                  {monitor.latencyMs != null && monitor.isActive && !isQuarantined
                     ? `${monitor.latencyMs}ms`
                     : "---"}
                 </span>
@@ -73,23 +96,38 @@ export const MonitorCard = ({ monitor }: MonitorCardProps) => {
                 <Shield strokeWidth={1} className="w-4 h-4 text-iris-400" />
                 <span
                   className={`text-sm font-bold font-mono ${
-                    monitor.currentSecurityGrade === "A" && monitor.isActive
+                    monitor.currentSecurityGrade === "A" && monitor.isActive && !isQuarantined
                       ? "text-green-500"
                       : "text-zinc-100"
                   }`}
                 >
-                  {monitor.isActive ? monitor.currentSecurityGrade : "U"}
+                  {monitor.isActive && !isQuarantined ? monitor.currentSecurityGrade : "U"}
                 </span>
               </div>
             </div>
 
             <div className="flex items-center gap-2">
-              <button
-                onClick={handleToggle}
-                className="text-zinc-500 hover:text-zinc-300 transition-colors"
-              >
-                <Power size={16} />
-              </button>
+              {isQuarantined && (
+                <Button
+                  size="1"
+                  variant="outline"
+                  onClick={handleReset}
+                  disabled={isResetting}
+                  className="bg-zinc-950 border-zinc-700 text-zinc-400 hover:text-zinc-100 font-onest rounded-none h-7 px-2 cursor-pointer transition-colors flex items-center gap-1"
+                >
+                  <RotateCcw size={12} className={isResetting ? "animate-spin" : ""} />
+                  {isResetting ? "Resetting..." : "Reset Circuit"}
+                </Button>
+              )}
+
+              {!isQuarantined && (
+                <button
+                  onClick={handleToggle}
+                  className="text-zinc-500 hover:text-zinc-300 transition-colors"
+                >
+                  <Power size={16} />
+                </button>
+              )}
 
               <AlertDialog.Root>
                 <AlertDialog.Trigger>
@@ -151,7 +189,7 @@ export const MonitorCard = ({ monitor }: MonitorCardProps) => {
         </KindleCard>
       </div>
 
-      {monitor.isActive && (
+      {monitor.isActive && !isQuarantined && (
         <SecurityDetailsModal
           monitorId={monitor.id}
           isOpen={isModalOpen}

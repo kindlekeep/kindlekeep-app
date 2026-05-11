@@ -4,8 +4,10 @@ import { api } from '../../../lib/axios';
 export enum UptimeStatus {
   Healthy = 0,
   Down = 1,
-  Degraded = 2
+  Degraded = 2,
+  Quarantined = 3
 }
+
 
 export interface MonitorResponse {
   id: string;
@@ -22,11 +24,22 @@ interface MonitorStore {
   setMonitors: (monitors: MonitorResponse[]) => void;
   toggleMonitor: (id: string) => Promise<void>;
   deleteMonitor: (id: string) => Promise<void>;
+  resetCircuit: (id: string) => Promise<void>;
 }
 
 export const useMonitorStore = create<MonitorStore>((set, get) => ({
   monitors: [],
   setMonitors: (monitors) => set({ monitors }),
+  
+  resetCircuit: async (id: string) => {
+    try {
+      await api.post(`/api/monitors/${id}/reset-circuit`);
+    } catch (error) {
+      console.error('Failed to reset circuit', error);
+      throw error;
+    }
+  },
+
   
   toggleMonitor: async (id: string) => {
     const previousMonitors = get().monitors;

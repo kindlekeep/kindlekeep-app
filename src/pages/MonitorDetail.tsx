@@ -1,22 +1,21 @@
 import { useParams, Link } from 'react-router-dom';
 import { useQuery } from '@tanstack/react-query';
 import { Box, Flex, Text, Code, Button, Tooltip } from '@radix-ui/themes';
-import { ArrowLeft, ShieldCheck, ShieldAlert, Copy, Activity, TerminalSquare } from 'lucide-react';
-import { useEffect, useMemo, useRef, useState } from 'react';
-import { Terminal } from '@xterm/xterm';
-import { FitAddon } from '@xterm/addon-fit';
-import * as signalR from '@microsoft/signalr';
+import { ArrowLeft, ShieldCheck, ShieldAlert, Copy, Activity } from 'lucide-react';
+import { useEffect, useMemo, useRef, useCallback } from 'react';
+import { Terminal } from "@xterm/xterm";
+import { FitAddon } from "@xterm/addon-fit";
 import { api } from '../lib/axios';
 import { UptimeStatus } from '../features/monitors/store/useMonitorStore';
 import type { SecurityAuditResponse, UptimeLogResponse } from '../features/monitors/types/monitor.types';
+import { useSignalR } from '../features/monitors/hooks/useSignalR';
 import '@xterm/xterm/css/xterm.css';
 
 export const MonitorDetail = () => {
   const { id } = useParams<{ id: string }>();
   const terminalRef = useRef<HTMLDivElement>(null);
   const xtermInstance = useRef<Terminal | null>(null);
-  const [connection, setConnection] = useState<signalR.HubConnection | null>(null);
-
+  
   const { data: history, isLoading: historyLoading } = useQuery<UptimeLogResponse[]>({
     queryKey: ['monitorHistory', id],
     queryFn: async () => {
@@ -36,6 +35,19 @@ export const MonitorDetail = () => {
     enabled: !!id,
   });
 
+  // Log handler passed to the SignalR hook
+  const handleLog = useCallback((log: string) => {
+    if (xtermInstance.current) {
+      xtermInstance.current.writeln(`\x1b[90m[${new Date().toLocaleTimeString()}]\x1b[0m ${log}`);
+    }
+  }, []);
+
+  const token = localStorage.getItem('jwt_token');
+  
+  // The useSignalR hook now internally manages the connection state guard
+  // and ensures SubscribeToMonitor is only called after the connection is established.
+  useSignalR(token, { monitorId: id, onLog: handleLog });
+
   useEffect(() => {
     if (!terminalRef.current) return;
 
@@ -43,14 +55,15 @@ export const MonitorDetail = () => {
     const term = new Terminal({
       theme: {
         background: '#09090b',
-        foreground: '#fafafa',
+        foreground: '#e4e4e7',
         cursor: '#3b82f6',
         selectionBackground: '#27272a',
       },
       fontFamily: 'monospace',
-      fontSize: 14,
+      fontSize: 13,
       cursorBlink: true,
       disableStdin: true,
+      convertEol: true,
     });
 
     term.loadAddon(fitAddon);
@@ -62,53 +75,14 @@ export const MonitorDetail = () => {
     resizeObserver.observe(terminalRef.current);
 
     term.writeln('\x1b[1;34m>\x1b[0m Initializing Live Telemetry Terminal...');
-    term.writeln('\x1b[1;34m>\x1b[0m Establishing secure transport layer...');
+    term.writeln('\x1b[1;34m>\x1b[0m Establishing secure transport layer via SignalR...');
 
     return () => {
       resizeObserver.disconnect();
       term.dispose();
+      xtermInstance.current = null;
     };
   }, []);
-
-  useEffect(() => {
-    if (!id) return;
-
-    const url = import.meta.env.VITE_API_URL || 'http://localhost:5247';
-    const newConnection = new signalR.HubConnectionBuilder()
-      .withUrl(`${url}/hubs/pulse`)
-      .withAutomaticReconnect()
-      .build();
-
-    setConnection(newConnection);
-
-    return () => {
-      newConnection.stop();
-    };
-  }, [id]);
-
-  useEffect(() => {
-    if (!connection || !id) return;
-
-    connection.start()
-      .then(() => {
-        connection.invoke('SubscribeToMonitor', id);
-        connection.on('ReceiveLogStream', (log: string) => {
-          if (xtermInstance.current) {
-            xtermInstance.current.writeln(`\x1b[90m[${new Date().toISOString()}]\x1b[0m ${log}`);
-          }
-        });
-      })
-      .catch(err => {
-        if (xtermInstance.current) {
-          xtermInstance.current.writeln(`\x1b[1;31m>\x1b[0m Transport failed: ${err}`);
-        }
-      });
-
-    return () => {
-      connection.invoke('UnsubscribeFromMonitor', id)
-        .then(() => connection.off('ReceiveLogStream'));
-    };
-  }, [connection, id]);
 
   const paddedHistory = useMemo(() => {
     if (!history) return Array(144).fill(null);
@@ -252,16 +226,6 @@ export const MonitorDetail = () => {
       )}
 
       <Box className="bg-zinc-950 border border-zinc-800 p-8 mb-8" style={{ borderRadius: 0 }}>
-        <Flex align="center" gap="3" className="mb-6">
-          <TerminalSquare className="w-5 h-5 text-blue-500 drop-shadow-[0_0_2px_rgba(59,130,246,0.8)]" strokeWidth={1} />
-          <Text className="text-2xl font-bold font-unbounded text-zinc-50">
-            Live Telemetry Terminal
-          </Text>
-        </Flex>
-        <Box className="h-64 w-full rounded-sm overflow-hidden border border-zinc-800" ref={terminalRef} />
-      </Box>
-
-      <Box className="bg-zinc-950 border border-zinc-800 p-8" style={{ borderRadius: 0 }}>
         <Text className="font-unbounded font-bold text-2xl text-zinc-50 block mb-6">Sentinel Vault Integration</Text>
         
         {auditLoading ? (
@@ -312,6 +276,17 @@ export const MonitorDetail = () => {
         ) : (
           <Text className="text-red-400">Security audit data unavailable.</Text>
         )}
+      </Box>
+
+      {/* Live Telemetry Terminal Section */}
+      <Box className="bg-zinc-900 border border-zinc-800 p-8 border-l-2 border-l-blue-500" style={{ borderRadius: 0 }}>
+        <Flex align="center" justify="between" className="mb-6">
+          <Text className="text-2xl font-bold font-unbounded text-zinc-50">
+            Live Telemetry
+          </Text>
+          <Box className="w-2 h-2 bg-blue-500 rounded-full animate-pulse shadow-[0_0_8px_rgba(59,130,246,0.8)]" />
+        </Flex>
+        <Box className="h-64 w-full overflow-hidden border border-zinc-800 bg-zinc-950" ref={terminalRef} />
       </Box>
     </Box>
   );

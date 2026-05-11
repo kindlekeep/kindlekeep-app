@@ -1,9 +1,15 @@
 import { useEffect, useRef } from 'react';
-import { HubConnectionBuilder, HubConnection, LogLevel } from '@microsoft/signalr';
+import { HubConnectionBuilder, HubConnection, LogLevel, HubConnectionState } from '@microsoft/signalr';
 import { useMonitorStore } from '../store/useMonitorStore';
 
-export const useSignalR = (token: string | null) => {
+interface UseSignalROptions {
+  monitorId?: string;
+  onLog?: (log: string) => void;
+}
+
+export const useSignalR = (token: string | null, options?: UseSignalROptions) => {
   const connectionRef = useRef<HubConnection | null>(null);
+  const startPromiseRef = useRef<Promise<void> | null>(null);
   
   useEffect(() => {
     if (!token) return;
@@ -30,22 +36,55 @@ export const useSignalR = (token: string | null) => {
       }));
     });
 
+    if (options?.onLog) {
+      connection.on('ReceiveLogStream', options.onLog);
+    }
+
     const startConnection = async () => {
+      // Connection State Guard: Do not start if already connecting or connected
+      if (connection.state !== HubConnectionState.Disconnected) return;
+
       try {
-        await connection.start();
+        startPromiseRef.current = connection.start();
+        await startPromiseRef.current;
+        
+        // Subscription Logic: Only invoke after connection is established
+        if (options?.monitorId && connection.state === HubConnectionState.Connected) {
+          await connection.invoke('SubscribeToMonitor', options.monitorId);
+        }
       } catch (error: any) {
-        // Complex logic: React Strict Mode mounts components twice in development, which can abort the initial SignalR negotiation.
         if (error.name === 'AbortError' || error.message?.includes('stopped during negotiation')) {
           return; 
         }
         console.warn('SignalR connection failed:', error);
+      } finally {
+        startPromiseRef.current = null;
       }
     };
 
     startConnection();
 
     return () => {
-      connection.stop();
+      const stopConnection = async () => {
+        // Handle race condition: wait for start to finish before stopping
+        if (startPromiseRef.current) {
+          try { await startPromiseRef.current; } catch { /* ignore */ }
+        }
+
+        if (connection.state === HubConnectionState.Connected) {
+          if (options?.monitorId) {
+            await connection.invoke('UnsubscribeFromMonitor', options.monitorId).catch(() => {});
+          }
+        }
+        
+        if (connection.state !== HubConnectionState.Disconnected) {
+          await connection.stop();
+        }
+      };
+      
+      stopConnection();
     };
-  }, [token]);
+  }, [token, options?.monitorId, options?.onLog]);
+
+  return connectionRef.current;
 };

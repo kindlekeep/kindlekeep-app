@@ -1,9 +1,13 @@
 import axios from 'axios';
 
+// Remove non-standard headers globally to prevent CORS preflight issues
+delete axios.defaults.headers.common['X-Requested-With'];
+
 export const api = axios.create({
   baseURL: import.meta.env.VITE_API_URL || 'http://localhost:5247',
-  withCredentials: true,
 });
+
+
 
 api.interceptors.request.use(
   (config) => {

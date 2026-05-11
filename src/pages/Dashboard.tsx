@@ -1,6 +1,6 @@
 // src/pages/Dashboard.tsx
 import { useEffect } from 'react';
-import axios from 'axios';
+import { api } from '../lib/axios';
 import { motion } from 'framer-motion';
 import { useMonitorStore } from '../features/monitors/store/useMonitorStore';
 import { useSignalR } from '../features/monitors/hooks/useSignalR';
@@ -8,20 +8,18 @@ import { MonitorCard } from '../features/monitors/components/MonitorCard';
 import { AddMonitorModal } from '../features/monitors/components/AddMonitorModal';
 
 export const Dashboard = () => {
-  useSignalR();
+  const token = localStorage.getItem('jwt_token');
+  
+  // The useSignalR hook handles the global telemetry subscription (ReceivePulse) 
+  // and now includes a lifecycle guard to prevent race conditions.
+  useSignalR(token);
+  
   const { monitors, setMonitors } = useMonitorStore();
 
   useEffect(() => {
     const fetchMonitors = async () => {
-      const token = localStorage.getItem('jwt_token');
-      if (!token) return;
-
-      const baseUrl = import.meta.env.VITE_API_URL ?? 'http://localhost:5247';
-      
       try {
-        const response = await axios.get(`${baseUrl}/api/monitors`, {
-          headers: { Authorization: `Bearer ${token}` }
-        });
+        const response = await api.get('/api/monitors');
         setMonitors(response.data);
       } catch (error) {
         console.error('Initial payload telemetry fetch failed:', error);
@@ -30,6 +28,7 @@ export const Dashboard = () => {
 
     fetchMonitors();
   }, [setMonitors]);
+
 
   return (
     <div className="min-h-screen bg-zinc-950 p-8 text-zinc-100 font-sans">
